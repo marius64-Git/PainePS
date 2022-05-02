@@ -1,0 +1,5 @@
+Iocomp.Instrumentation.Standard.DisplayDouble, Iocomp.Instrumentation.WF40.Std, Version=4.0.4.21402, Culture=neutral, PublicKeyToken=a217a64fde564c89
+Iocomp.Instrumentation.Plotting.Plot, Iocomp.Instrumentation.WF40.Plot, Version=4.0.4.21393, Culture=neutral, PublicKeyToken=a217a64fde564c89
+Iocomp.Instrumentation.Standard.SevenSegmentClock, Iocomp.Instrumentation.WF40.Std, Version=4.0.4.21402, Culture=neutral, PublicKeyToken=a217a64fde564c89
+Iocomp.Instrumentation.Standard.SevenSegmentInteger, Iocomp.Instrumentation.WF40.Std, Version=4.0.4.21402, Culture=neutral, PublicKeyToken=a217a64fde564c89
+Iocomp.Instrumentation.Standard.SevenSegmentAnalog, Iocomp.Instrumentation.WF40.Std, Version=4.0.4.21402, Culture=neutral, PublicKeyToken=a217a64fde564c89
