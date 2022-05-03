@@ -11,6 +11,7 @@ using System.Windows.Forms;
 using System.Threading;
 using System.IO;
 
+
 namespace PainePS
 {
     public partial class Form1 : Form
@@ -21,7 +22,9 @@ namespace PainePS
         int plot_points = 0;
         double pressure=0.0d, temperature=0.0d;
         int state = 0;
-        int sensor;
+        int node_address = 1;
+        int multimode = 0;
+        bool continuous = false;
 
         public Form1()
         {
@@ -60,13 +63,27 @@ namespace PainePS
                 {
                     //serialPort1 = new System.IO.Ports.SerialPort();
                     serialPort_Paine.PortName = "COM" + com_nr.ToString();
-                    serialPort_Paine.BaudRate = Convert.ToInt32(comboBox_Baud.Text); //9600 or 115200
+                    serialPort_Paine.BaudRate = Convert.ToInt32(comboBox_Baud.Text); //19200 or 115200
                     serialPort_Paine.DataBits = 8;
                     serialPort_Paine.DiscardNull = false;
                     //serialPort_Paine.DtrEnable = true;
                     //serialPort_Paine.RtsEnable = true;
                     // serialPort_Paine.Handshake = System.IO.Ports.Handshake.None; //(Handshake)Enum.Parse(typeof(Handshake), "None");
-                    serialPort_Paine.Parity = System.IO.Ports.Parity.Odd; //.None; // (Parity)Enum.Parse(typeof(Parity), "None");
+                    switch(comboBox_COM_Parity.Text)
+                    {
+                        case "odd":
+                            serialPort_Paine.Parity = System.IO.Ports.Parity.Odd; //.None; // (Parity)Enum.Parse(typeof(Parity), "None");
+                            break;
+                        case "none":
+                            serialPort_Paine.Parity = System.IO.Ports.Parity.None; // (Parity)Enum.Parse(typeof(Parity), "None");
+                            break;
+                        case "even":
+                            serialPort_Paine.Parity = System.IO.Ports.Parity.Even; //.None; // (Parity)Enum.Parse(typeof(Parity), "None");
+                            break;
+                        default:
+                            serialPort_Paine.Parity = System.IO.Ports.Parity.Odd; //.None; // (Parity)Enum.Parse(typeof(Parity), "None");
+                            break;
+                    }                    
                     serialPort_Paine.ReadBufferSize = 1024;
                     serialPort_Paine.StopBits = System.IO.Ports.StopBits.One; // (StopBits)Enum.Parse(typeof(StopBits), "1");
                     serialPort_Paine.WriteBufferSize = 1024;
@@ -80,7 +97,8 @@ namespace PainePS
                         serialPort_Paine.Open();
                         serialPort_Paine.DiscardInBuffer();
 
-                        SendToDiagList("Serial COM" + com_nr.ToString() + " opened, BR = " + serialPort_Paine.BaudRate.ToString ());
+                        SendToDiagList("Serial COM" + com_nr.ToString() + " opened, BR = " + 
+                            serialPort_Paine.BaudRate.ToString () + ", Parity = " + comboBox_COM_Parity.Text);
                         Thread.Sleep(100);
                         button_OPEN_COM_Port.Enabled = true;
                         text_COM.Enabled = true;
@@ -201,16 +219,19 @@ namespace PainePS
                         pressure.ToString("0.0"), temperature.ToString("0.0"));
                 stream_writer.WriteLine(to_stream);
             }
-            try
+            if(checkBox_Plot_Enabled.Checked)
             {
-                plot1.BeginUpdate();
-                plot1.Channels[1].AddXY(plot_points, pressure);
-                plot1.Channels[0].AddXY(plot_points, temperature);
-                plot1.EndUpdate();
-                plot_points++;
-                Set_YMax();
-            }
-            catch { SendToDiagList("Plot error1"); }
+                try
+                {
+                    plot1.BeginUpdate();
+                    plot1.Channels[1].AddXY(plot_points, pressure);
+                    plot1.Channels[0].AddXY(plot_points, temperature);
+                    plot1.EndUpdate();
+                    plot_points++;
+                    Set_YMax();
+                }
+                catch { SendToDiagList("Plot error1"); }
+            }            
         }
 
         void Set_YMax()
@@ -247,41 +268,81 @@ namespace PainePS
                             //SendToDiagList("*");
                             SendToDiagList("COM: " + serial_in);
                             serial_data = serial_in.Split(new char[] { ' ', ',', '\\' }, StringSplitOptions.RemoveEmptyEntries);
-                            if (serial_in.Contains(">>"))
+                            if (continuous)
                             {
-                                if (serial_data.Length > 0)
+                                if (serial_data.Length == 1)
                                 {
-                                    sensor = Convert.ToInt32(serial_data[0]);
+                                    //pressure or temperature
+                                }
+                                else //pressure and temperature
+                                {
+                                    try
+                                    {
+                                        temperature = Convert.ToDouble(serial_data[0]);
+                                        pressure  = Convert.ToDouble(serial_data[1]);
+                                    }
+                                    catch
+                                    {
+                                        temperature = 0.0d;
+                                        pressure = 0.0d;
+                                    }
+                                    sevenSegmentAnalog2.Value = pressure;
+                                    sevenSegmentAnalog1.Value = temperature;
                                 }
                             }
+                            else
+                            {
+                                if (serial_in.Contains("Z>>"))
+                                {
+                                    if (serial_data.Length == 1)
+                                    {
+                                        checkBox1.Checked = false;
+                                        textBox_Node_Address.Text = "NA";
+                                    }
+                                    else if ((serial_data.Length == 2) || (serial_data.Length == 3))
+                                    {
+                                        node_address = Convert.ToInt32(serial_data[0]);
+                                        textBox_Node_Address.Text = node_address.ToString();
+                                        checkBox1.Checked = true;
+                                    }
+                                    state = 0;
+                                }
+                                else if (serial_in.Contains("."))
+                                {
+                                    if(serial_data.Length > 1)
+                                    {
+                                        try
+                                        {
+                                            temperature = Convert.ToDouble(serial_data[0]);
+                                            pressure = Convert.ToDouble(serial_data[1]);
+                                        }
+                                        catch
+                                        {
+                                            temperature = 0.0d;
+                                            pressure = 0.0d;
+                                        }
+                                        sevenSegmentAnalog2.Value = pressure;
+                                        sevenSegmentAnalog1.Value = temperature;
+                                    }
+                                }
 
                                 switch (state)
-                            {
-                                case 0:
-
-                                    
-                                    break;
-
-                                default:
-
-                                    break;
-                            }
-                            serial_data = serial_in.Split(new char[] { ' ', ',', '\\' }, StringSplitOptions.RemoveEmptyEntries);
-                            if (serial_data.Length > 0)
-                            {
-                                if (serial_data[0].Contains(">")) //contains date and time, it's CFG or CMD
                                 {
+                                    case 0:
+                                        state = 1; //waiting to receive a response
 
-                                }
-                                else
-                                {
-                                    //if (chirp_cmd.rx_data[0, y] == 0) chirp_cmd.rx_data[0, y] = Convert.ToDouble(serial_data[2]);
+                                        break;
+                                    case 1:
+
+                                        break;
+
+                                    default:
+
+                                        break;
                                 }
                             }
-
+                            
                         }
-
-                    //serialPort_Paine.Write("..."); 
                 }
                 else //serial not OPEN
                 {
@@ -296,23 +357,57 @@ namespace PainePS
 
         private void button_SendCommand_Click(object sender, EventArgs e)
         {
+            button_SendCommand.Enabled = false;
+            Send_Serial_Command(textBox_Command.Text);
+            Thread.Sleep(100);
+            button_SendCommand.Enabled = true;
+        }
+
+        //use this function to send commands to the sensor - it adds a delay after each character
+        private void Send_Serial_Command(string cmd)
+        {
             char[] buff = new char[1];
 
             if (serialPort_Paine.IsOpen)
             {
-                button_SendCommand.Enabled = false;
-                //serialPort_Paine.Write(textBox_Command.Text + "\n");
-                foreach (char ch in textBox_Command.Text)
+                foreach (char ch in cmd)
                 {
                     buff[0] = ch;
-                    serialPort_Paine.Write(buff,0,1);
+                    serialPort_Paine.Write(buff, 0, 1);
                     Thread.Sleep(1);
                 }
                 serialPort_Paine.Write("\n");
-                Thread.Sleep(100);
-                button_SendCommand.Enabled = true;
             }
-                
+        }
+
+        private void Send_Serial_Command_Multimode(string cmd, int multimode, int na)
+        {
+            char[] buff = new char[1];
+
+            if (serialPort_Paine.IsOpen)
+            {
+                if(multimode == 1)
+                {                    
+                    foreach (char ch in na.ToString())
+                    {
+                        buff[0] = ch;
+                        serialPort_Paine.Write(buff, 0, 1);
+                        Thread.Sleep(1);
+                    }
+                    serialPort_Paine.Write(" "); Thread.Sleep(1);
+                }
+                foreach (char ch in cmd)
+                {
+                    buff[0] = ch;
+                    serialPort_Paine.Write(buff, 0, 1);
+                    Thread.Sleep(1);
+                }
+                serialPort_Paine.Write("\n"); Thread.Sleep(1);
+            }
+        }
+        private void Send_Serial_Command_Default_Multimode_Node(string cmd)
+        {
+            Send_Serial_Command_Multimode(cmd, multimode, node_address);
         }
 
         private void button_Reset_Click(object sender, EventArgs e)
@@ -333,6 +428,241 @@ namespace PainePS
         {
             plot1.XAxes[0].Tracking.Style = Iocomp.Types.PlotTrackingStyle.ExpandMax;
             plot1.YAxes[0].Tracking.Style = Iocomp.Types.PlotTrackingStyle.ExpandMax;
+        }
+
+        private void checkBox1_CheckedChanged(object sender, EventArgs e)
+        {
+            if (checkBox1.Checked)
+            {
+                multimode = 1;
+            }
+            else
+            {
+                multimode = 0;
+            }
+            SendToDiagList("Multimode is " + multimode.ToString());
+        }
+
+        private void button_Start_Continuous_Click(object sender, EventArgs e)
+        {
+            Send_Serial_Command_Default_Multimode_Node(PS_Commands.START_OUT.ToString());
+            continuous = true;
+        }
+
+        private void button_Setup_Mode_Click(object sender, EventArgs e)
+        {
+            if(groupBox_Mode_Commands.Enabled)
+            {
+                Send_Serial_Command_Default_Multimode_Node(PS_Commands.BASIC_ACCESS.ToString());
+                groupBox_Mode_Commands.Enabled = false;
+            }
+            else
+            {
+                Send_Serial_Command_Default_Multimode_Node(PS_Commands.ENTER_SETUP_MODE.ToString());
+                groupBox_Mode_Commands.Enabled = true;
+            }
+            
+        }
+
+        private void button_Stop_Continuous_Click(object sender, EventArgs e)
+        {
+            Send_Serial_Command_Default_Multimode_Node(PS_Commands.STOP_OUT.ToString());
+            continuous = false;
+        }
+
+        private void button_Multimode_Click(object sender, EventArgs e)
+        {
+            string cmd = PS_Commands.SET_MULTINODE.ToString();
+
+            switch (comboBox_Multimode.Text)
+            {
+                case "Single":
+                    cmd += " 0";
+                    break;
+                case "Multiple":
+                    cmd += " 1";
+                    break;
+                default: //Read
+
+                    break;
+            }
+            Send_Serial_Command_Default_Multimode_Node(cmd);
+            switch (comboBox_Multimode.Text)
+            {
+                case "Single":
+                    checkBox1.Checked = false;
+                    break;
+                case "Multiple":
+                    checkBox1.Checked = true;
+                    break;
+                default: //Read
+
+                    break;
+            }
+            SendToDiagList("Multimode = " + multimode.ToString());
+        }
+
+        private void button_Request_PT_Click(object sender, EventArgs e)
+        {
+            Send_Serial_Command_Default_Multimode_Node(PS_Commands.POLL_DATA.ToString ());
+        }
+
+        private void button_Read_P_Click(object sender, EventArgs e)
+        {
+            Send_Serial_Command_Default_Multimode_Node(PS_Commands.READ_LAST_PRESSURE.ToString());
+        }
+
+        private void button_Read_T_Click(object sender, EventArgs e)
+        {
+            //
+            Send_Serial_Command_Default_Multimode_Node(PS_Commands.READ_TEMPERATURE.ToString());
+        }
+
+        private void button_Read_Version_Click(object sender, EventArgs e)
+        {
+            Send_Serial_Command_Default_Multimode_Node(PS_Commands.READ_VERSION.ToString());
+        }
+
+        private void button_Read_Serial_Click(object sender, EventArgs e)
+        {
+            Send_Serial_Command_Default_Multimode_Node(PS_Commands.READ_SERIAL_NUMBER.ToString());
+        }
+
+        private void button_Change_Node_Address_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                node_address = Convert.ToInt32(textBox_Node_Address.Text);
+            }
+            catch
+            {
+                node_address = 1;
+                textBox_Node_Address.Text = node_address.ToString();
+                SendToDiagList("Error in setting node address, set default to 1");
+            }            
+        }
+
+        private void button_Terrminal_Embedded_Click(object sender, EventArgs e)
+        {
+            string cmd = PS_Commands.SET_TERMINAL_MODE.ToString();
+
+            switch (comboBox_Terminal_Embedded.Text)
+            {
+                case "Embedded":
+                    cmd += " 0";
+                    break;
+                case "Terminal":
+                    cmd += " 1";
+                    break;
+                default: //Read
+
+                    break;
+            }
+            Send_Serial_Command_Default_Multimode_Node(cmd);
+        }
+
+        private void button_Node_Address_Click(object sender, EventArgs e)
+        {
+            string cmd = PS_Commands.SET_NODE_ADDR.ToString();
+
+            switch (comboBox_Node_Address.Text)
+            {
+                case "1":
+                    cmd += " 1";
+                    textBox_Node_Address.Text = "1";
+                    node_address = 1;
+                    break;
+                case "2":
+                    cmd += " 2";
+                    textBox_Node_Address.Text = "2";
+                    node_address = 2;
+                    break;
+                default: //Read
+
+                    break;
+            }
+            Send_Serial_Command_Default_Multimode_Node(cmd);
+        }
+
+        private void button_Baud_Rate_Click(object sender, EventArgs e)
+        {
+            string cmd = PS_Commands.SET_BAUD_RATE.ToString();
+
+            switch (comboBox_Baud_Rate.Text)
+            {
+                case "19200":
+                    cmd += " 1";
+                    break;
+                case "115200":
+                    cmd += " 6";
+                    break;
+                default: //Read
+
+                    break;
+            }
+            Send_Serial_Command_Default_Multimode_Node(cmd);
+            SendToDiagList("IMPORTANT: after changing the BR,");
+            SendToDiagList("the COM has to be closed and open again with the new BR");
+        }
+
+        private void button_Parity_Click(object sender, EventArgs e)
+        {
+            string cmd = PS_Commands.SET_PARITY.ToString();
+
+            switch (comboBox_Parity.Text)
+            {
+                case "odd":
+                    cmd += " 1";
+                    break;
+                case "even":
+                    cmd += " 2";
+                    break;
+                case "none":
+                    cmd += " 0";
+                    break;
+                default: //Read
+
+                    break;
+            }
+            Send_Serial_Command_Default_Multimode_Node(cmd);
+            SendToDiagList("IMPORTANT: after changing the Parity,");
+            SendToDiagList("the COM has to be closed and open again with the new Parity");
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            //textBox_Acquisitio_Time
+            string cmd = PS_Commands.SET_SAMPLE_TIME.ToString();
+            int nr;
+            try
+            {
+                nr = Convert.ToInt32(textBox_Acquisitio_Time.Text);
+                if (nr > 1000) nr = 1000;
+                if (nr < 100) nr = 100;
+                cmd += " " + nr.ToString();
+            }
+            catch
+            {
+                cmd += " 1000";
+                textBox_Acquisitio_Time.Text = "1000";
+                SendToDiagList("Error in acquisition sampling time, set default to 1000.");
+            }
+            
+            Send_Serial_Command_Default_Multimode_Node(cmd);
+        }
+
+        private void button_Factory_Reset_Click(object sender, EventArgs e)
+        {
+            //
+            Send_Serial_Command_Default_Multimode_Node(PS_Commands.RESTORE_DEFAULT_SETTINGS.ToString());
+        }
+
+        private void button_Set_Decimals_Click(object sender, EventArgs e)
+        {
+            string cmd = PS_Commands.SET_MAX_NUM_FRAC_DIGITS.ToString();
+
+            cmd += " " + comboBox_decimals.Text;
+            Send_Serial_Command_Default_Multimode_Node(cmd);
         }
 
         private void button2_Click(object sender, EventArgs e)
